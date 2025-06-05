@@ -26,6 +26,8 @@ st.set_page_config(
 # Initialize session state
 if 'images' not in st.session_state:
     st.session_state.images = []
+if 'edited_images' not in st.session_state:
+    st.session_state.edited_images = []
 if 'analysis_result' not in st.session_state:
     st.session_state.analysis_result = None
 if 'current_poem' not in st.session_state:
@@ -139,6 +141,7 @@ And ancient tides eternal sweep."""
             # Clear previous results if poem changed
             if st.session_state.current_poem != poem_text:
                 st.session_state.images = []
+                st.session_state.edited_images = []
                 st.session_state.analysis_result = None
                 st.session_state.generation_complete = False
             
@@ -198,6 +201,7 @@ def analyze_and_generate(poem_text, language, art_style, mood_intensity, num_ima
             
             if images:
                 st.session_state.images = images
+                st.session_state.edited_images = images.copy()  # Initialize edited images as copies
                 st.session_state.generation_complete = True
                 
                 progress_bar.progress(100)
@@ -219,11 +223,15 @@ def analyze_and_generate(poem_text, language, art_style, mood_intensity, num_ima
 def display_generated_artwork():
     """Display the generated artwork with editing controls"""
     
+    # Initialize edited images in session state if not present
+    if 'edited_images' not in st.session_state:
+        st.session_state.edited_images = st.session_state.images.copy()
+    
     # Add visual separation
     st.markdown('<div class="artwork-section">', unsafe_allow_html=True)
     st.header("🎨 Generated Artwork")
     
-    images = st.session_state.images
+    images = st.session_state.edited_images  # Use edited versions
     
     if not images:
         return
@@ -244,53 +252,56 @@ def display_generated_artwork():
         cols = st.columns(min(len(images), 2))
         for i, img in enumerate(images):
             with cols[i % 2]:
+                # Show current image (original or edited)
                 st.image(img, caption=f"Interpretation {i+1}", use_container_width=True)
                 
-                # Add editing controls for each image
+                # Editing controls
                 with st.expander(f"✏️ Edit Image {i+1}"):
-                    edited_img = add_editing_controls(img, i)
-
-                    # Always show the result (edited or original)
-                    if edited_img:
-                        st.image(edited_img, caption=f"Edited Image {i+1}", use_container_width=True)
-                        
-                        # Download button
-                        img_bytes = get_image_download_link(edited_img, f"versecanvas_poem_{i+1}.png")
-                        st.download_button(
-                            label=f"📥 Download Image {i+1}",
-                            data=img_bytes,
-                            file_name=f"versecanvas_poem_{i+1}.png",
-                            mime="image/png",
-                            use_container_width=True
-                        )
-                    else:
-                        st.error("Could not process image for editing")
+                    add_editing_controls(i)
+                
+                # Download button (outside the expander, full width)
+                img_bytes = get_image_download_link(img, f"versecanvas_poem_{i+1}.png")
+                st.download_button(
+                    label="📥 Download Image",
+                    data=img_bytes,
+                    file_name=f"versecanvas_poem_{i+1}.png",
+                    mime="image/png",
+                    use_container_width=True,
+                    key=f"download_{i}"
+                )
     else:
         # Single image - full width
         img = images[0]
         st.image(img, caption="Generated Interpretation", use_container_width=True)
         
-        # Add editing controls
+        # Editing controls
         with st.expander("✏️ Edit Image"):
-            edited_img = add_editing_controls(img, 0)
+            add_editing_controls(0)
+        
+        # Download button (outside the expander, full width)
+        img_bytes = get_image_download_link(img, "versecanvas_poem.png")
+        st.download_button(
+            label="📥 Download Image",
+            data=img_bytes,
+            file_name="versecanvas_poem.png",
+            mime="image/png",
+            use_container_width=True
+        )
 
-            if edited_img:
-                st.image(edited_img, caption="Edited Image", use_container_width=True)
-                
-                # Download button
-                img_bytes = get_image_download_link(edited_img, "versecanvas_poem.png")
-                st.download_button(
-                    label="📥 Download Image",
-                    data=img_bytes,
-                    file_name="versecanvas_poem.png",
-                    mime="image/png",
-                    use_container_width=True
-                )
-            else:
-                st.error("Could not process image for editing")
-
-def add_editing_controls(image, image_index):
-    """Add basic editing controls for an image"""
+def add_editing_controls(image_index):
+    """Add editing controls for an image with apply button"""
+    
+    # Get original image
+    original_image = st.session_state.images[image_index]
+    
+    # Initialize reset counter for this image if not exists
+    reset_key = f"reset_counter_{image_index}"
+    if reset_key not in st.session_state:
+        st.session_state[reset_key] = 0
+    
+    # Use reset counter in widget keys to force reset
+    reset_suffix = st.session_state[reset_key]
+    
     st.markdown("**Adjust Image Properties:**")
 
     col1, col2, col3 = st.columns(3)
@@ -299,31 +310,56 @@ def add_editing_controls(image, image_index):
         brightness = st.slider(
             "Brightness", 
             0.1, 2.0, 1.0, 0.1, 
-            key=f"brightness_{image_index}"
+            key=f"brightness_{image_index}_{reset_suffix}",
+            help="Adjust image brightness"
         )
 
     with col2:
         contrast = st.slider(
             "Contrast", 
             0.1, 2.0, 1.0, 0.1, 
-            key=f"contrast_{image_index}"
+            key=f"contrast_{image_index}_{reset_suffix}",
+            help="Adjust image contrast"
         )
 
     with col3:
         blur = st.slider(
             "Blur", 
             0, 5, 0, 1, 
-            key=f"blur_{image_index}"
+            key=f"blur_{image_index}_{reset_suffix}",
+            help="Apply blur effect"
         )
-
-    # Always return an image - either edited or original
-    try:
-        # Apply edits (even if values are default, it will return the original)
-        edited_image = basic_edit_image(image, brightness, contrast, blur)
-        return edited_image
-    except Exception as e:
-        st.error(f"Error editing image: {str(e)}")
-        return image  # Return original image if editing fails
+    
+    # Show current settings
+    if brightness != 1.0 or contrast != 1.0 or blur != 0:
+        st.info(f"🎨 Preview: Brightness {brightness:.1f}, Contrast {contrast:.1f}, Blur {blur}")
+    
+    # Apply and Reset buttons
+    col_apply, col_reset = st.columns(2)
+    
+    with col_apply:
+        if st.button(f"✨ Apply Changes", key=f"apply_{image_index}_{reset_suffix}", use_container_width=True):
+            try:
+                # Apply edits to the image
+                edited_image = basic_edit_image(original_image, brightness, contrast, blur)
+                # Update the session state with edited image
+                st.session_state.edited_images[image_index] = edited_image
+                st.success("✅ Changes applied!")
+                st.rerun()  # Refresh to show updated image
+            except Exception as e:
+                st.error(f"Error applying changes: {str(e)}")
+    
+    with col_reset:
+        if st.button(f"🔄 Reset to Original", key=f"reset_{image_index}_{reset_suffix}", use_container_width=True):
+            try:
+                # Reset to original image
+                st.session_state.edited_images[image_index] = original_image.copy()
+                # Increment reset counter to create new widget keys (this resets sliders)
+                st.session_state[reset_key] += 1
+                st.success("✅ Reset to original!")
+                st.rerun()  # Refresh to show original image and reset sliders
+            except Exception as e:
+                st.error(f"Error resetting image: {str(e)}")
     
 def get_image_download_link(image, filename):
     """Convert PIL image to bytes for download"""
@@ -356,6 +392,7 @@ def show_info():
         # Add a button to clear the session
         if st.button("🗑️ Clear All"):
             st.session_state.images = []
+            st.session_state.edited_images = []
             st.session_state.analysis_result = None
             st.session_state.current_poem = ""
             st.session_state.generation_complete = False
