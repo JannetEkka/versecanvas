@@ -11,6 +11,7 @@ import base64
 from poem_analyzer import analyze_poem
 from image_generator import generate_poem_image
 from image_editor import basic_edit_image
+from text_overlay import add_poem_to_image
 
 # Load environment variables
 load_dotenv()
@@ -34,6 +35,10 @@ if 'current_poem' not in st.session_state:
     st.session_state.current_poem = ""
 if 'generation_complete' not in st.session_state:
     st.session_state.generation_complete = False
+if 'text_overlay_enabled' not in st.session_state:
+    st.session_state.text_overlay_enabled = {}
+if 'text_overlay_default' not in st.session_state:
+    st.session_state.text_overlay_default = False
 
 # Custom CSS for better styling
 st.markdown("""
@@ -270,23 +275,28 @@ def display_generated_artwork():
                     key=f"download_{i}"
                 )
     else:
-        # Single image - full width
+        # Single image - side by side layout
         img = images[0]
-        st.image(img, caption="Generated Interpretation", use_container_width=True)
         
-        # Editing controls
-        with st.expander("✏️ Edit Image"):
+        # Create two columns for better layout
+        col_image, col_controls = st.columns([2, 1])  # Image takes 2/3, controls take 1/3
+        
+        with col_image:
+            st.image(img, caption="Generated Interpretation", use_container_width=True)
+            
+            # Download button below image
+            img_bytes = get_image_download_link(img, "versecanvas_poem.png")
+            st.download_button(
+                label="📥 Download Image",
+                data=img_bytes,
+                file_name="versecanvas_poem.png",
+                mime="image/png",
+                use_container_width=True
+            )
+        
+        with col_controls:
+            st.markdown("### ✏️ Edit Image")
             add_editing_controls(0)
-        
-        # Download button (outside the expander, full width)
-        img_bytes = get_image_download_link(img, "versecanvas_poem.png")
-        st.download_button(
-            label="📥 Download Image",
-            data=img_bytes,
-            file_name="versecanvas_poem.png",
-            mime="image/png",
-            use_container_width=True
-        )
 
 def add_editing_controls(image_index):
     """Add editing controls for an image with apply button"""
@@ -302,37 +312,105 @@ def add_editing_controls(image_index):
     # Use reset counter in widget keys to force reset
     reset_suffix = st.session_state[reset_key]
     
-    st.markdown("**Adjust Image Properties:**")
-
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-        brightness = st.slider(
-            "Brightness", 
-            0.1, 2.0, 1.0, 0.1, 
-            key=f"brightness_{image_index}_{reset_suffix}",
-            help="Adjust image brightness"
-        )
-
-    with col2:
-        contrast = st.slider(
-            "Contrast", 
-            0.1, 2.0, 1.0, 0.1, 
-            key=f"contrast_{image_index}_{reset_suffix}",
-            help="Adjust image contrast"
-        )
-
-    with col3:
-        blur = st.slider(
-            "Blur", 
-            0, 5, 0, 1, 
-            key=f"blur_{image_index}_{reset_suffix}",
-            help="Apply blur effect"
-        )
+    # Create tabs for different editing options
+    tab1, tab2 = st.tabs(["🎨 Image Adjustments", "📝 Add Poem Text"])
     
-    # Show current settings
-    if brightness != 1.0 or contrast != 1.0 or blur != 0:
-        st.info(f"🎨 Preview: Brightness {brightness:.1f}, Contrast {contrast:.1f}, Blur {blur}")
+    with tab1:
+        st.markdown("**Adjust Image Properties:**")
+
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            brightness = st.slider(
+                "Brightness", 
+                0.1, 2.0, 1.0, 0.1, 
+                key=f"brightness_{image_index}_{reset_suffix}",
+                help="Adjust image brightness"
+            )
+
+        with col2:
+            contrast = st.slider(
+                "Contrast", 
+                0.1, 2.0, 1.0, 0.1, 
+                key=f"contrast_{image_index}_{reset_suffix}",
+                help="Adjust image contrast"
+            )
+
+        with col3:
+            blur = st.slider(
+                "Blur", 
+                0, 5, 0, 1, 
+                key=f"blur_{image_index}_{reset_suffix}",
+                help="Apply blur effect"
+            )
+        
+        # Show current settings
+        if brightness != 1.0 or contrast != 1.0 or blur != 0:
+            st.info(f"🎨 Preview: Brightness {brightness:.1f}, Contrast {contrast:.1f}, Blur {blur}")
+    
+    with tab2:
+        st.markdown("**Add Poem Text to Image:**")
+        
+        # Toggle for text overlay
+        enable_text = st.checkbox(
+            "Add poem text to image", 
+            value=st.session_state.text_overlay_default,
+            key=f"enable_text_{image_index}_{reset_suffix}",
+            help="Overlay the poem text on the image"
+        )
+
+        # Update the default state when user changes it
+        if enable_text != st.session_state.text_overlay_default:
+            st.session_state.text_overlay_default = enable_text
+        
+        if enable_text:
+            # Text overlay options
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                font_size = st.slider("Font Size", 16, 48, 24, 2, key=f"font_size_{image_index}_{reset_suffix}")
+                text_position = st.selectbox(
+                    "Text Position", 
+                    ["center", "top", "bottom", "left", "right"],
+                    key=f"position_{image_index}_{reset_suffix}"
+                )
+                font_style = st.selectbox(
+                    "Font Style",
+                    ["serif", "sans-serif", "arial", "times", "helvetica"],
+                    key=f"font_style_{image_index}_{reset_suffix}"
+                )
+            
+            with col2:
+                text_color = st.selectbox(
+                    "Text Color",
+                    ["White", "Black", "Light Gray", "Dark Gray"],
+                    key=f"text_color_{image_index}_{reset_suffix}"
+                )
+                
+                background_opacity = st.slider(
+                    "Background Opacity", 
+                    0.0, 1.0, 0.7, 0.1,
+                    key=f"bg_opacity_{image_index}_{reset_suffix}",
+                    help="Opacity of text background"
+                )
+                
+                text_alignment = st.selectbox(
+                    "Text Alignment",
+                    ["center", "left", "right"],
+                    key=f"text_align_{image_index}_{reset_suffix}"
+                )
+            
+            # Color mapping
+            color_map = {
+                "White": (255, 255, 255),
+                "Black": (0, 0, 0),
+                "Light Gray": (200, 200, 200),
+                "Dark Gray": (80, 80, 80)
+            }
+            
+            selected_color = color_map[text_color]
+            
+            st.info(f"📝 Text will be added with: {font_style} font, size {font_size}, {text_position} position")
     
     # Apply and Reset buttons
     col_apply, col_reset = st.columns(2)
@@ -340,8 +418,26 @@ def add_editing_controls(image_index):
     with col_apply:
         if st.button(f"✨ Apply Changes", key=f"apply_{image_index}_{reset_suffix}", use_container_width=True):
             try:
-                # Apply edits to the image
-                edited_image = basic_edit_image(original_image, brightness, contrast, blur)
+                # Start with original image
+                edited_image = original_image.copy()
+                
+                # Apply basic edits if any
+                if brightness != 1.0 or contrast != 1.0 or blur != 0:
+                    edited_image = basic_edit_image(edited_image, brightness, contrast, blur)
+                
+                # Apply text overlay if enabled
+                if enable_text and st.session_state.current_poem:
+                    edited_image = add_poem_to_image(
+                        image=edited_image,
+                        poem_text=st.session_state.current_poem,
+                        font_size=font_size,
+                        font_color=selected_color,
+                        position=text_position,
+                        background_opacity=background_opacity,
+                        font_style=font_style,
+                        text_alignment=text_alignment
+                    )
+                
                 # Update the session state with edited image
                 st.session_state.edited_images[image_index] = edited_image
                 st.success("✅ Changes applied!")
@@ -396,6 +492,8 @@ def show_info():
             st.session_state.analysis_result = None
             st.session_state.current_poem = ""
             st.session_state.generation_complete = False
+            st.session_state.text_overlay_enabled = {}
+            # Note: Keep text_overlay_default to remember user preference
             st.rerun()
 
 if __name__ == "__main__":

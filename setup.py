@@ -198,6 +198,37 @@ def run_streamlit_check():
         print(f"❌ Streamlit error: {str(e)}")
         return False
 
+def test_text_overlay():
+    """Test the text overlay module."""
+    print("\n🔍 Testing text overlay...")
+    
+    try:
+        from text_overlay import add_poem_to_image
+        from PIL import Image
+        
+        # Create a test image
+        test_image = Image.new('RGB', (400, 300), color=(100, 150, 200))
+        test_poem = "Roses are red,\nViolets are blue,\nAI is amazing,\nAnd so are you!"
+        
+        # Apply text overlay
+        result = add_poem_to_image(
+            test_image,
+            test_poem,
+            font_size=20,
+            position="center"
+        )
+        
+        if result and result.size == (400, 300):
+            print("✅ Text overlay working")
+            return True
+        else:
+            print("❌ Text overlay failed")
+            return False
+            
+    except Exception as e:
+        print(f"❌ Text overlay error: {str(e)}")
+        return False
+    
 def main():
     """Run all setup checks."""
     print("🎨 VerseCanvas Setup Check")
