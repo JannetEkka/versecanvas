@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 def get_config_and_credentials():
     """
     Get configuration and credentials with proper scopes for Vertex AI
+    Supports both JSON string format and individual TOML fields
     """
     project_id = None
     location = None
@@ -36,17 +37,18 @@ def get_config_and_credentials():
             
             logger.info("Using Streamlit secrets for configuration")
             
+            # Method 1: Try GOOGLE_CREDENTIALS as JSON string
             if 'GOOGLE_CREDENTIALS' in st.secrets:
                 try:
                     credentials_json = st.secrets['GOOGLE_CREDENTIALS']
                     credentials_info = json.loads(credentials_json)
                     
-                    # Create credentials with cloud platform scope (sufficient for Vertex AI)
+                    # Create credentials with cloud platform scope
                     credentials = service_account.Credentials.from_service_account_info(
                         credentials_info,
                         scopes=['https://www.googleapis.com/auth/cloud-platform']
                     )
-                    logger.info("Successfully loaded credentials with cloud platform scope")
+                    logger.info("Successfully loaded credentials from GOOGLE_CREDENTIALS JSON")
                     
                     return {
                         'project_id': project_id,
@@ -57,7 +59,28 @@ def get_config_and_credentials():
                 except (json.JSONDecodeError, KeyError, ValueError) as e:
                     logger.warning(f"Failed to parse GOOGLE_CREDENTIALS JSON: {e}")
             
-            # Fallback without explicit credentials
+            # Method 2: Try individual credential fields (google_credentials table)
+            if 'google_credentials' in st.secrets:
+                try:
+                    cred_dict = dict(st.secrets['google_credentials'])
+                    
+                    # Create credentials with cloud platform scope
+                    credentials = service_account.Credentials.from_service_account_info(
+                        cred_dict,
+                        scopes=['https://www.googleapis.com/auth/cloud-platform']
+                    )
+                    logger.info("Successfully loaded credentials from individual fields")
+                    
+                    return {
+                        'project_id': project_id,
+                        'location': location,
+                        'credentials': credentials
+                    }
+                    
+                except Exception as e:
+                    logger.warning(f"Failed to load credentials from individual fields: {e}")
+            
+            # If we have project_id but no working credentials, continue without explicit credentials
             logger.warning("Using project config without explicit credentials")
             return {
                 'project_id': project_id,
