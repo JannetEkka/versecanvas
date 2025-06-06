@@ -6,8 +6,12 @@ Uses Google Gemini to analyze poetry and extract visual elements for image gener
 import os
 import json
 import logging
+import json
+import logging
 from google import genai
 from google.genai.types import GenerateContentConfig
+from google.oauth2 import service_account
+import vertexai
 from google.oauth2 import service_account
 import vertexai
 
@@ -25,7 +29,7 @@ def get_config_and_credentials():
     credentials = None
 
     try:
-        # Try Streamlit secrets first (for cloud deployment)
+        # Attempt to load from Streamlit secrets (for cloud deployment)
         import streamlit as st
         if hasattr(st, 'secrets') and 'PROJECT_ID' in st.secrets:
             project_id = st.secrets['PROJECT_ID']
@@ -147,16 +151,23 @@ class PoemAnalyzer:
         """Initialize the poem analyzer with Gemini client."""
         try:
             config = get_config_and_credentials()
+            config = get_config_and_credentials()
             project_id = config['project_id']
             location = config['location']
             credentials = config['credentials']
 
             # Initialize Vertex AI with explicit credentials if provided
             vertexai.init(project=project_id, location=location, credentials=credentials)
+            credentials = config['credentials']
+
+            # Initialize Vertex AI with explicit credentials if provided
+            vertexai.init(project=project_id, location=location, credentials=credentials)
             
+            # Initialize the Gemini client
             # Initialize the Gemini client
             self.client = genai.Client(vertexai=True, project=project_id, location=location)
             self.model_id = "gemini-2.0-flash-001"
+            
             
             logger.info("PoemAnalyzer initialized successfully")
             
@@ -193,6 +204,11 @@ class PoemAnalyzer:
             )
             
             # Parse the JSON response
+            if response.text is not None:
+                analysis_result = json.loads(response.text)
+            else:
+                logger.error("Response text is None.")
+                return self._fallback_analysis(poem_text, language, art_style, mood_intensity)
             if response.text is not None:
                 analysis_result = json.loads(response.text)
             else:
