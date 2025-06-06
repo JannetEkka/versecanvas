@@ -4,71 +4,157 @@ Uses Google Imagen on Vertex AI to generate images from poem analysis.
 """
 
 import os
-import vertexai
-from vertexai.preview.vision_models import ImageGenerationModel
-from PIL import Image
-import io
+import json
 import logging
 import tempfile
 from typing import List, Optional
+from PIL import Image
+import vertexai
+from vertexai.preview.vision_models import ImageGenerationModel
+from google.oauth2 import service_account
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def get_config():
-    """Get configuration from either Streamlit secrets or environment variables."""
+def get_config_and_credentials():
+    """
+    Robust configuration and credentials loading for both local and cloud deployment.
+    Handles multiple credential formats and provides better error handling.
+    """
+    project_id = None
+    location = None
+    credentials = None
+
     try:
         # Try Streamlit secrets first (for cloud deployment)
         import streamlit as st
         if hasattr(st, 'secrets') and 'PROJECT_ID' in st.secrets:
-            config = {
-                'project_id': st.secrets['PROJECT_ID'],
-                'location': st.secrets.get('LOCATION', 'us-central1')
+            project_id = st.secrets['PROJECT_ID']
+            location = st.secrets.get('LOCATION', 'us-central1')
+            
+            logger.info("Using Streamlit secrets for configuration")
+            
+            # Method 1: Try GOOGLE_CREDENTIALS as JSON string
+            if 'GOOGLE_CREDENTIALS' in st.secrets:
+                try:
+                    credentials_json = st.secrets['GOOGLE_CREDENTIALS']
+                    
+                    # Handle different string formats
+                    if isinstance(credentials_json, str):
+                        # Clean up potential formatting issues
+                        credentials_json = credentials_json.strip()
+                        
+                        # Parse JSON
+                        credentials_info = json.loads(credentials_json)
+                        
+                        # Fix private key formatting if needed
+                        if 'private_key' in credentials_info:
+                            pk = credentials_info['private_key']
+                            # Ensure proper escaping of newlines
+                            if '\\n' not in pk and '\n' in pk:
+                                # Convert actual newlines to escaped newlines
+                                credentials_info['private_key'] = pk.replace('\n', '\\n')
+                            elif '\\n' in pk:
+                                # Already properly escaped, keep as is
+                                pass
+                        
+                        credentials = service_account.Credentials.from_service_account_info(credentials_info)
+                        logger.info("Successfully loaded credentials from GOOGLE_CREDENTIALS JSON")
+                        
+                        return {
+                            'project_id': project_id,
+                            'location': location,
+                            'credentials': credentials
+                        }
+                        
+                except (json.JSONDecodeError, KeyError, ValueError) as e:
+                    logger.warning(f"Failed to parse GOOGLE_CREDENTIALS JSON: {e}")
+                    
+            # Method 2: Try individual credential components (if JSON method failed)
+            if 'google_credentials' in st.secrets:
+                try:
+                    cred_dict = dict(st.secrets['google_credentials'])
+                    
+                    # Handle private key with proper formatting
+                    if 'private_key' in cred_dict:
+                        pk = cred_dict['private_key']
+                        # Ensure it has proper BEGIN/END markers and escaping
+                        if not pk.startswith('-----BEGIN PRIVATE KEY-----'):
+                            pk = f"-----BEGIN PRIVATE KEY-----\\n{pk}\\n-----END PRIVATE KEY-----\\n"
+                        elif '\\n' not in pk and '\n' in pk:
+                            pk = pk.replace('\n', '\\n')
+                        cred_dict['private_key'] = pk
+                    
+                    credentials = service_account.Credentials.from_service_account_info(cred_dict)
+                    logger.info("Successfully loaded credentials from individual components")
+                    
+                    return {
+                        'project_id': project_id,
+                        'location': location,
+                        'credentials': credentials
+                    }
+                    
+                except Exception as e:
+                    logger.warning(f"Failed to load credentials from components: {e}")
+            
+            # If we have project_id but no working credentials, continue without explicit credentials
+            # This will fall back to default authentication
+            logger.warning("Using project config without explicit credentials")
+            return {
+                'project_id': project_id,
+                'location': location,
+                'credentials': None
             }
             
-            # Handle Google Cloud authentication for Streamlit Cloud
-            if 'GOOGLE_CREDENTIALS' in st.secrets:
-                import json
-                from google.oauth2 import service_account
-                
-                # Parse the service account credentials
-                credentials_info = json.loads(st.secrets['GOOGLE_CREDENTIALS'])
-                credentials = service_account.Credentials.from_service_account_info(credentials_info)
-                
-                # Set the credentials for Google Cloud libraries
-                import os
-                # This is a bit hacky but works for most Google Cloud libraries
-                os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = 'temp_creds.json'
-                with open('temp_creds.json', 'w') as f:
-                    json.dump(credentials_info, f)
-            
-            return config
-    except (ImportError, AttributeError, KeyError):
-        pass
-    
+    except (ImportError, AttributeError, KeyError) as e:
+        logger.info(f"Streamlit secrets not available: {e}")
+
     # Fallback to environment variables (for local development)
     project_id = os.getenv('PROJECT_ID')
     location = os.getenv('LOCATION', 'us-central1')
     
     if not project_id:
-        raise ValueError("PROJECT_ID not found in secrets or environment variables")
+        raise ValueError(
+            "PROJECT_ID not found. Please set it in:\n"
+            "1. Streamlit secrets (for cloud deployment), or\n"
+            "2. Environment variables (for local development)\n"
+            "\nFor Streamlit Cloud, add to your secrets:\n"
+            "PROJECT_ID = \"your-project-id\"\n"
+            "LOCATION = \"us-central1\"\n"
+            "GOOGLE_CREDENTIALS = \"...your service account JSON...\""
+        )
+    
+    # For local development, try explicit service account file
+    service_account_path = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+    if service_account_path and os.path.exists(service_account_path):
+        try:
+            credentials = service_account.Credentials.from_service_account_file(service_account_path)
+            logger.info(f"Using service account file: {service_account_path}")
+        except Exception as e:
+            logger.warning(f"Failed to load service account file: {e}")
+            credentials = None
+    else:
+        logger.info("Using default Google Cloud authentication")
+        credentials = None
     
     return {
         'project_id': project_id,
-        'location': location
+        'location': location,
+        'credentials': credentials
     }
 
 class ImageGenerator:
     def __init__(self):
         """Initialize the image generator with Vertex AI."""
         try:
-            config = get_config()
+            config = get_config_and_credentials()
             self.project_id = config['project_id']
             self.location = config['location']
+            credentials = config['credentials']
             
-            # Initialize Vertex AI
-            vertexai.init(project=self.project_id, location=self.location)
+            # Initialize Vertex AI with explicit credentials if provided
+            vertexai.init(project=self.project_id, location=self.location, credentials=credentials)
             
             # Load the Imagen model
             self.model = ImageGenerationModel.from_pretrained("imagen-3.0-generate-002")
@@ -142,7 +228,17 @@ class ImageGenerator:
                 # Convert to RGB if necessary
                 if pil_image.mode != 'RGB':
                     pil_image = pil_image.convert('RGB')
-                return pil_image.copy()  # Copy to avoid file handle issues
+                # Make a copy to avoid file handle issues
+                result_image = pil_image.copy()
+                pil_image.close()
+                
+                # Clean up temp file
+                try:
+                    os.unlink(temp_file.name)
+                except:
+                    pass  # Ignore cleanup errors
+                    
+                return result_image
                 
         except Exception as e:
             logger.error(f"Error converting Vertex AI image to PIL: {str(e)}")

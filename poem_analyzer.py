@@ -4,68 +4,160 @@ Uses Google Gemini to analyze poetry and extract visual elements for image gener
 """
 
 import os
-from google import genai
-from google.genai.types import GenerateContentConfig
 import json
 import logging
+from google import genai
+from google.genai.types import GenerateContentConfig
+from google.oauth2 import service_account
+import vertexai
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def get_config():
-    """Get configuration from either Streamlit secrets or environment variables."""
+def get_config_and_credentials():
+    """
+    Robust configuration and credentials loading for both local and cloud deployment.
+    Handles multiple credential formats and provides better error handling.
+    """
+    project_id = None
+    location = None
+    credentials = None
+
     try:
         # Try Streamlit secrets first (for cloud deployment)
         import streamlit as st
         if hasattr(st, 'secrets') and 'PROJECT_ID' in st.secrets:
-            config = {
-                'project_id': st.secrets['PROJECT_ID'],
-                'location': st.secrets.get('LOCATION', 'us-central1')
+            project_id = st.secrets['PROJECT_ID']
+            location = st.secrets.get('LOCATION', 'us-central1')
+            
+            logger.info("Using Streamlit secrets for configuration")
+            
+            # Method 1: Try GOOGLE_CREDENTIALS as JSON string
+            if 'GOOGLE_CREDENTIALS' in st.secrets:
+                try:
+                    credentials_json = st.secrets['GOOGLE_CREDENTIALS']
+                    
+                    # Handle different string formats
+                    if isinstance(credentials_json, str):
+                        # Clean up potential formatting issues
+                        credentials_json = credentials_json.strip()
+                        
+                        # Parse JSON
+                        credentials_info = json.loads(credentials_json)
+                        
+                        # Fix private key formatting if needed
+                        if 'private_key' in credentials_info:
+                            pk = credentials_info['private_key']
+                            # Ensure proper escaping of newlines
+                            if '\\n' not in pk and '\n' in pk:
+                                # Convert actual newlines to escaped newlines
+                                credentials_info['private_key'] = pk.replace('\n', '\\n')
+                            elif '\\n' in pk:
+                                # Already properly escaped, keep as is
+                                pass
+                        
+                        credentials = service_account.Credentials.from_service_account_info(credentials_info)
+                        logger.info("Successfully loaded credentials from GOOGLE_CREDENTIALS JSON")
+                        
+                        return {
+                            'project_id': project_id,
+                            'location': location,
+                            'credentials': credentials
+                        }
+                        
+                except (json.JSONDecodeError, KeyError, ValueError) as e:
+                    logger.warning(f"Failed to parse GOOGLE_CREDENTIALS JSON: {e}")
+                    
+            # Method 2: Try individual credential components (if JSON method failed)
+            if 'google_credentials' in st.secrets:
+                try:
+                    cred_dict = dict(st.secrets['google_credentials'])
+                    
+                    # Handle private key with proper formatting
+                    if 'private_key' in cred_dict:
+                        pk = cred_dict['private_key']
+                        # Ensure it has proper BEGIN/END markers and escaping
+                        if not pk.startswith('-----BEGIN PRIVATE KEY-----'):
+                            pk = f"-----BEGIN PRIVATE KEY-----\\n{pk}\\n-----END PRIVATE KEY-----\\n"
+                        elif '\\n' not in pk and '\n' in pk:
+                            pk = pk.replace('\n', '\\n')
+                        cred_dict['private_key'] = pk
+                    
+                    credentials = service_account.Credentials.from_service_account_info(cred_dict)
+                    logger.info("Successfully loaded credentials from individual components")
+                    
+                    return {
+                        'project_id': project_id,
+                        'location': location,
+                        'credentials': credentials
+                    }
+                    
+                except Exception as e:
+                    logger.warning(f"Failed to load credentials from components: {e}")
+            
+            # If we have project_id but no working credentials, continue without explicit credentials
+            # This will fall back to default authentication
+            logger.warning("Using project config without explicit credentials")
+            return {
+                'project_id': project_id,
+                'location': location,
+                'credentials': None
             }
             
-            # Handle Google Cloud authentication for Streamlit Cloud
-            if 'GOOGLE_CREDENTIALS' in st.secrets:
-                import json
-                from google.oauth2 import service_account
-                
-                # Parse the service account credentials
-                credentials_info = json.loads(st.secrets['GOOGLE_CREDENTIALS'])
-                credentials = service_account.Credentials.from_service_account_info(credentials_info)
-                
-                # Set the credentials for Google Cloud libraries
-                import os
-                # This is a bit hacky but works for most Google Cloud libraries
-                os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = 'temp_creds.json'
-                with open('temp_creds.json', 'w') as f:
-                    json.dump(credentials_info, f)
-            
-            return config
-    except (ImportError, AttributeError, KeyError):
-        pass
-    
+    except (ImportError, AttributeError, KeyError) as e:
+        logger.info(f"Streamlit secrets not available: {e}")
+
     # Fallback to environment variables (for local development)
     project_id = os.getenv('PROJECT_ID')
     location = os.getenv('LOCATION', 'us-central1')
     
     if not project_id:
-        raise ValueError("PROJECT_ID not found in secrets or environment variables")
+        raise ValueError(
+            "PROJECT_ID not found. Please set it in:\n"
+            "1. Streamlit secrets (for cloud deployment), or\n"
+            "2. Environment variables (for local development)\n"
+            "\nFor Streamlit Cloud, add to your secrets:\n"
+            "PROJECT_ID = \"your-project-id\"\n"
+            "LOCATION = \"us-central1\"\n"
+            "GOOGLE_CREDENTIALS = \"...your service account JSON...\""
+        )
+    
+    # For local development, try explicit service account file
+    service_account_path = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+    if service_account_path and os.path.exists(service_account_path):
+        try:
+            credentials = service_account.Credentials.from_service_account_file(service_account_path)
+            logger.info(f"Using service account file: {service_account_path}")
+        except Exception as e:
+            logger.warning(f"Failed to load service account file: {e}")
+            credentials = None
+    else:
+        logger.info("Using default Google Cloud authentication")
+        credentials = None
     
     return {
         'project_id': project_id,
-        'location': location
+        'location': location,
+        'credentials': credentials
     }
 
 class PoemAnalyzer:
     def __init__(self):
         """Initialize the poem analyzer with Gemini client."""
         try:
-            config = get_config()
+            config = get_config_and_credentials()
             project_id = config['project_id']
             location = config['location']
+            credentials = config['credentials']
+
+            # Initialize Vertex AI with explicit credentials if provided
+            vertexai.init(project=project_id, location=location, credentials=credentials)
             
+            # Initialize the Gemini client
             self.client = genai.Client(vertexai=True, project=project_id, location=location)
             self.model_id = "gemini-2.0-flash-001"
+            
             logger.info("PoemAnalyzer initialized successfully")
             
         except Exception as e:
@@ -101,7 +193,11 @@ class PoemAnalyzer:
             )
             
             # Parse the JSON response
-            analysis_result = json.loads(response.text) # type: ignore
+            if response.text is not None:
+                analysis_result = json.loads(response.text)
+            else:
+                logger.error("Response text is None.")
+                return self._fallback_analysis(poem_text, language, art_style, mood_intensity)
             
             logger.info("Poem analysis completed successfully")
             return analysis_result
