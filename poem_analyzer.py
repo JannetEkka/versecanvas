@@ -21,8 +21,7 @@ logger = logging.getLogger(__name__)
 
 def get_config_and_credentials():
     """
-    Robust configuration and credentials loading for both local and cloud deployment.
-    Handles multiple credential formats and provides better error handling.
+    Get configuration and credentials with proper scopes for Vertex AI
     """
     project_id = None
     location = None
@@ -37,71 +36,31 @@ def get_config_and_credentials():
             
             logger.info("Using Streamlit secrets for configuration")
             
-            # Method 1: Try GOOGLE_CREDENTIALS as JSON string
             if 'GOOGLE_CREDENTIALS' in st.secrets:
                 try:
                     credentials_json = st.secrets['GOOGLE_CREDENTIALS']
+                    credentials_info = json.loads(credentials_json)
                     
-                    # Handle different string formats
-                    if isinstance(credentials_json, str):
-                        # Clean up potential formatting issues
-                        credentials_json = credentials_json.strip()
-                        
-                        # Parse JSON
-                        credentials_info = json.loads(credentials_json)
-                        
-                        # Fix private key formatting if needed
-                        if 'private_key' in credentials_info:
-                            pk = credentials_info['private_key']
-                            # Ensure proper escaping of newlines
-                            if '\\n' not in pk and '\n' in pk:
-                                # Convert actual newlines to escaped newlines
-                                credentials_info['private_key'] = pk.replace('\n', '\\n')
-                            elif '\\n' in pk:
-                                # Already properly escaped, keep as is
-                                pass
-                        
-                        credentials = service_account.Credentials.from_service_account_info(credentials_info)
-                        logger.info("Successfully loaded credentials from GOOGLE_CREDENTIALS JSON")
-                        
-                        return {
-                            'project_id': project_id,
-                            'location': location,
-                            'credentials': credentials
-                        }
-                        
-                except (json.JSONDecodeError, KeyError, ValueError) as e:
-                    logger.warning(f"Failed to parse GOOGLE_CREDENTIALS JSON: {e}")
-                    
-            # Method 2: Try individual credential components (if JSON method failed)
-            if 'google_credentials' in st.secrets:
-                try:
-                    cred_dict = dict(st.secrets['google_credentials'])
-                    
-                    # Handle private key with proper formatting
-                    if 'private_key' in cred_dict:
-                        pk = cred_dict['private_key']
-                        # Ensure it has proper BEGIN/END markers and escaping
-                        if not pk.startswith('-----BEGIN PRIVATE KEY-----'):
-                            pk = f"-----BEGIN PRIVATE KEY-----\\n{pk}\\n-----END PRIVATE KEY-----\\n"
-                        elif '\\n' not in pk and '\n' in pk:
-                            pk = pk.replace('\n', '\\n')
-                        cred_dict['private_key'] = pk
-                    
-                    credentials = service_account.Credentials.from_service_account_info(cred_dict)
-                    logger.info("Successfully loaded credentials from individual components")
+                    # Create credentials with proper scopes for Vertex AI
+                    credentials = service_account.Credentials.from_service_account_info(
+                        credentials_info,
+                        scopes=[
+                            'https://www.googleapis.com/auth/cloud-platform',
+                            'https://www.googleapis.com/auth/aiplatform'
+                        ]
+                    )
+                    logger.info("Successfully loaded credentials with Vertex AI scopes")
                     
                     return {
                         'project_id': project_id,
                         'location': location,
                         'credentials': credentials
                     }
-                    
-                except Exception as e:
-                    logger.warning(f"Failed to load credentials from components: {e}")
+                        
+                except (json.JSONDecodeError, KeyError, ValueError) as e:
+                    logger.warning(f"Failed to parse GOOGLE_CREDENTIALS JSON: {e}")
             
-            # If we have project_id but no working credentials, continue without explicit credentials
-            # This will fall back to default authentication
+            # Fallback without explicit credentials
             logger.warning("Using project config without explicit credentials")
             return {
                 'project_id': project_id,
@@ -120,19 +79,21 @@ def get_config_and_credentials():
         raise ValueError(
             "PROJECT_ID not found. Please set it in:\n"
             "1. Streamlit secrets (for cloud deployment), or\n"
-            "2. Environment variables (for local development)\n"
-            "\nFor Streamlit Cloud, add to your secrets:\n"
-            "PROJECT_ID = \"your-project-id\"\n"
-            "LOCATION = \"us-central1\"\n"
-            "GOOGLE_CREDENTIALS = \"...your service account JSON...\""
+            "2. Environment variables (for local development)"
         )
     
     # For local development, try explicit service account file
     service_account_path = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
     if service_account_path and os.path.exists(service_account_path):
         try:
-            credentials = service_account.Credentials.from_service_account_file(service_account_path)
-            logger.info(f"Using service account file: {service_account_path}")
+            credentials = service_account.Credentials.from_service_account_file(
+                service_account_path,
+                scopes=[
+                    'https://www.googleapis.com/auth/cloud-platform',
+                    'https://www.googleapis.com/auth/aiplatform'
+                ]
+            )
+            logger.info(f"Using service account file with Vertex AI scopes: {service_account_path}")
         except Exception as e:
             logger.warning(f"Failed to load service account file: {e}")
             credentials = None
