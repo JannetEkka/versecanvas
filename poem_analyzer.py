@@ -15,6 +15,10 @@ import vertexai
 from google.oauth2 import service_account
 import vertexai
 
+import os
+import json
+import tempfile
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -167,6 +171,9 @@ class PoemAnalyzer:
             dict: Analysis results with themes, mood, visual elements, and image prompt
         """
         try:
+            # Ensure authentication environment is set up
+            self._ensure_auth_env()
+            
             # Construct analysis prompt
             analysis_prompt = self._create_analysis_prompt(poem_text, language, art_style, mood_intensity)
             
@@ -187,24 +194,46 @@ class PoemAnalyzer:
             else:
                 logger.error("Response text is None.")
                 return self._fallback_analysis(poem_text, language, art_style, mood_intensity)
-            if response.text is not None:
-                analysis_result = json.loads(response.text)
-            else:
-                logger.error("Response text is None.")
-                return self._fallback_analysis(poem_text, language, art_style, mood_intensity)
             
             logger.info("Poem analysis completed successfully")
             return analysis_result
             
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse JSON response: {str(e)}")
-            # Fallback to text analysis if JSON parsing fails
             return self._fallback_analysis(poem_text, language, art_style, mood_intensity)
             
         except Exception as e:
             logger.error(f"Error during poem analysis: {str(e)}")
+            # If we get a metadata server error, try fallback
+            if "metadata.google.internal" in str(e):
+                logger.info("Metadata server error detected, using fallback analysis")
+                return self._fallback_analysis(poem_text, language, art_style, mood_intensity)
             return None
 
+    def _ensure_auth_env(self):
+        """Ensure authentication environment is set up"""
+        import os
+        import tempfile
+        
+        try:
+            # Only set up if not already done
+            if 'GOOGLE_APPLICATION_CREDENTIALS' not in os.environ:
+                import streamlit as st
+                if hasattr(st, 'secrets') and 'google_credentials' in st.secrets:
+                    creds_dict = dict(st.secrets['google_credentials'])
+                    
+                    # Create temporary credentials file
+                    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+                        json.dump(creds_dict, f, indent=2)
+                        temp_path = f.name
+                    
+                    # Set environment variables
+                    os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = temp_path
+                    logger.info("Authentication environment ensured")
+                    
+        except Exception as e:
+            logger.warning(f"Could not ensure auth environment: {e}")
+            
     def _create_analysis_prompt(self, poem_text, language, art_style, mood_intensity):
         """Create a detailed prompt for poem analysis."""
         
@@ -311,11 +340,63 @@ def analyze_poem(poem_text, language="English", art_style="Photorealistic", mood
         dict: Analysis results
     """
     try:
+        # Set up authentication environment before creating analyzer
+        _setup_module_auth()
+        
+        # Create analyzer and analyze poem
         analyzer = PoemAnalyzer()
         return analyzer.analyze_poem(poem_text, language, art_style, mood_intensity)
+        
     except Exception as e:
         logger.error(f"Error in analyze_poem function: {str(e)}")
+        
+        # If we get a metadata server error, try a simple fallback
+        if "metadata.google.internal" in str(e):
+            logger.info("Metadata server error in convenience function, using simple fallback")
+            return _simple_fallback_analysis(poem_text, art_style)
+            
         return None
+
+def _setup_module_auth():
+    """Set up authentication at module level"""
+    import os
+    import tempfile
+    
+    try:
+        # Only set up if not already done
+        if 'GOOGLE_APPLICATION_CREDENTIALS' not in os.environ:
+            import streamlit as st
+            if hasattr(st, 'secrets') and 'google_credentials' in st.secrets:
+                creds_dict = dict(st.secrets['google_credentials'])
+                
+                # Create temporary credentials file
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+                    json.dump(creds_dict, f, indent=2)
+                    temp_path = f.name
+                
+                # Set environment variables
+                os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = temp_path
+                os.environ['GOOGLE_CLOUD_PROJECT'] = st.secrets.get('PROJECT_ID', 'versecanvas')
+                
+                # Disable metadata server fallback
+                os.environ['GCE_METADATA_ROOT'] = ''
+                os.environ['GCE_METADATA_IP'] = ''
+                
+                logger.info("Module-level authentication environment set up")
+                
+    except Exception as e:
+        logger.warning(f"Could not set up module auth: {e}")
+
+def _simple_fallback_analysis(poem_text, art_style):
+    """Simple fallback when all else fails"""
+    return {
+        "themes": "Poetry, emotion, expression",
+        "mood": "Reflective and artistic",
+        "visual_elements": "Soft colors, flowing forms, natural elements",
+        "narrative": "A poetic journey",
+        "style_notes": f"Rendered in {art_style} style",
+        "image_prompt": f"A beautiful {art_style.lower()} artwork inspired by poetry, with soft flowing colors, natural elements, and an emotional atmosphere that captures the essence of written verse"
+    }
 
 # Example usage and testing
 if __name__ == "__main__":
