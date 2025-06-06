@@ -44,15 +44,12 @@ def get_config_and_credentials():
                     credentials_json = st.secrets['GOOGLE_CREDENTIALS']
                     credentials_info = json.loads(credentials_json)
                     
-                    # Create credentials with proper scopes for Vertex AI
+                    # Create credentials with cloud platform scope (sufficient for Vertex AI)
                     credentials = service_account.Credentials.from_service_account_info(
                         credentials_info,
-                        scopes=[
-                            'https://www.googleapis.com/auth/cloud-platform',
-                            'https://www.googleapis.com/auth/aiplatform'
-                        ]
+                        scopes=['https://www.googleapis.com/auth/cloud-platform']
                     )
-                    logger.info("Successfully loaded credentials with Vertex AI scopes")
+                    logger.info("Successfully loaded credentials with cloud platform scope")
                     
                     return {
                         'project_id': project_id,
@@ -91,12 +88,9 @@ def get_config_and_credentials():
         try:
             credentials = service_account.Credentials.from_service_account_file(
                 service_account_path,
-                scopes=[
-                    'https://www.googleapis.com/auth/cloud-platform',
-                    'https://www.googleapis.com/auth/aiplatform'
-                ]
+                scopes=['https://www.googleapis.com/auth/cloud-platform']
             )
-            logger.info(f"Using service account file with Vertex AI scopes: {service_account_path}")
+            logger.info(f"Using service account file with cloud platform scope: {service_account_path}")
         except Exception as e:
             logger.warning(f"Failed to load service account file: {e}")
             credentials = None
