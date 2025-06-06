@@ -168,7 +168,7 @@ def debug_credentials():
     """Debug function to test credentials loading - only show in debug mode"""
     # Only show debug info if explicitly requested via URL parameter
     try:
-        if st.experimental_get_query_params().get('debug', [False])[0]:
+        if st.query_params.get('debug', [False])[0]:
             st.write("🔍 **Debug: Credentials Loading**")
             
             try:
@@ -256,7 +256,7 @@ def debug_credentials():
             except Exception as e:
                 st.error(f"❌ Debug failed: {str(e)}")
     except:
-        # If experimental_get_query_params is not available, skip debug
+        # If query_params is not available, skip debug
         pass
 
 def main():
