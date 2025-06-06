@@ -39,17 +39,20 @@ if 'text_overlay_enabled' not in st.session_state:
     st.session_state.text_overlay_enabled = {}
 if 'text_overlay_default' not in st.session_state:
     st.session_state.text_overlay_default = False
+if 'current_image_index' not in st.session_state:
+    st.session_state.current_image_index = 0
 
 # Custom CSS for better styling
 st.markdown("""
 <style>
     .main-header {
         text-align: center;
-        padding: 1rem 0;
+        padding: 2rem 1rem;
         background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
         color: white;
         border-radius: 10px;
-        margin-bottom: 2rem;
+        margin: 1rem 0 2rem 0;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);        
     }
     .poem-container {
         background-color: #f8f9fa;
@@ -73,6 +76,94 @@ st.markdown("""
         border-radius: 10px;
         box-shadow: 0 4px 8px rgba(0,0,0,0.1);
         margin: 1rem 0;
+    }
+    .carousel-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+        padding: 0 1rem;
+    }
+    .carousel-navigation {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+    }
+    # .carousel-indicator {
+    #     background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+    #     color: white;
+    #     padding: 0.5rem 1rem;
+    #     border-radius: 20px;
+    #     font-weight: bold;
+    #     font-size: 0.9rem;
+    # }
+    .nav-button {
+        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        font-size: 1.2rem;
+        transition: all 0.3s ease;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    }
+    .nav-button:hover {
+        transform: scale(1.1);
+        box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+    }
+    .nav-button:disabled {
+        background: #ccc;
+        cursor: not-allowed;
+        transform: none;
+    }
+    .image-container {
+        position: relative;
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        transition: all 0.3s ease;
+    }
+    .image-container:hover {
+        box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+    }
+    .controls-header {
+        color: #667eea;
+        font-weight: bold;
+        padding-bottom: 0.5rem;
+        border-bottom: 2px solid #f0f0f0;
+    }
+            .stMainBlockContainer {
+        padding-top: 1rem !important;
+        padding-bottom: 1rem !important;
+    }
+    
+    .stVerticalBlock {
+        gap: 0.5rem !important;
+    }
+    
+    .stElementContainer {
+        margin-bottom: 0.5rem !important;
+    }
+    
+    /* Alternative: target the specific emotion-cache class if the above doesn't work */
+    .st-emotion-cache-zy6yx3 {
+        padding-top: 1rem !important;
+        padding-bottom: 1rem !important;
+    }
+    
+    .st-emotion-cache-vlxhtx {
+        gap: 0.5rem !important;
+    }
+    
+    /* Reduce overall app padding */
+    section[data-testid="stMainBlockContainer"] {
+        padding-top: 1rem !important;
+        padding-bottom: 1rem !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -163,7 +254,7 @@ And ancient tides eternal sweep."""
     elif not st.session_state.generation_complete:
         # Show placeholder when no poem is being processed
         st.markdown("""
-        <div style='text-align: center; padding: 3rem 0; color: #6c757d;'>
+        <div style='text-align: center; padding: 1rem 0; color: #6c757d;'>
             <h3>🎨 Your Generated Artwork Will Appear Here</h3>
             <p>Enter a poem above and click "Analyze & Generate" to create beautiful AI-powered visual art!</p>
         </div>
@@ -208,6 +299,7 @@ def analyze_and_generate(poem_text, language, art_style, mood_intensity, num_ima
                 st.session_state.images = images
                 st.session_state.edited_images = images.copy()  # Initialize edited images as copies
                 st.session_state.generation_complete = True
+                reset_carousel()  # Reset to first image
                 
                 progress_bar.progress(100)
                 status_text.text("✨ Complete! Your artwork is ready.")
@@ -225,8 +317,27 @@ def analyze_and_generate(poem_text, language, art_style, mood_intensity, num_ima
         st.error(f"An error occurred: {str(e)}")
         st.info("Please check your Google Cloud configuration and try again.")
 
+def navigate_carousel(direction):
+    """Navigate the image carousel"""
+    if not st.session_state.images:
+        return
+    
+    current = st.session_state.current_image_index
+    total = len(st.session_state.images)
+    
+    if direction == "next":
+        st.session_state.current_image_index = (current + 1) % total
+    elif direction == "prev":
+        st.session_state.current_image_index = (current - 1) % total
+    
+    st.rerun()
+
+def reset_carousel():
+    """Reset carousel to first image"""
+    st.session_state.current_image_index = 0
+
 def display_generated_artwork():
-    """Display the generated artwork with editing controls"""
+    """Display the generated artwork with carousel navigation and editing controls"""
     
     # Initialize edited images in session state if not present
     if 'edited_images' not in st.session_state:
@@ -241,6 +352,10 @@ def display_generated_artwork():
     if not images:
         return
     
+    # Ensure current_image_index is within bounds
+    if st.session_state.current_image_index >= len(images):
+        st.session_state.current_image_index = 0
+    
     # Display analysis if available
     if st.session_state.analysis_result:
         with st.expander("📋 View Analysis Details"):
@@ -250,53 +365,102 @@ def display_generated_artwork():
             st.markdown("**Visual Elements:** " + analysis.get('visual_elements', 'N/A'))
             st.markdown("**Generated Prompt:** " + analysis.get('image_prompt', 'N/A'))
     
-    st.subheader("Generated Images")
+    # Carousel Container
+    st.markdown('<div class="carousel-container">', unsafe_allow_html=True)
     
-    # Use columns for better layout when multiple images
+    # Carousel Header with Navigation
     if len(images) > 1:
-        cols = st.columns(min(len(images), 2))
-        for i, img in enumerate(images):
-            with cols[i % 2]:
-                # Show current image (original or edited)
-                st.image(img, caption=f"Interpretation {i+1}", use_container_width=True)
-                
-                # Editing controls
-                with st.expander(f"✏️ Edit Image {i+1}"):
-                    add_editing_controls(i)
-                
-                # Download button (outside the expander, full width)
-                img_bytes = get_image_download_link(img, f"versecanvas_poem_{i+1}.png")
-                st.download_button(
-                    label="📥 Download Image",
-                    data=img_bytes,
-                    file_name=f"versecanvas_poem_{i+1}.png",
-                    mime="image/png",
-                    use_container_width=True,
-                    key=f"download_{i}"
-                )
+        col_nav_left, col_nav_right = st.columns([1, 1])
+        
+        with col_nav_left:
+            if st.button("◀", key="nav_prev", help="Previous image", use_container_width=True):
+                navigate_carousel("prev")
+        
+        # with col_indicator:
+        #     current_num = st.session_state.current_image_index + 1
+        #     total_num = len(images)
+        #     # st.markdown(f"""
+        #     # <div class="carousel-indicator">
+        #     #     🎨 Interpretation {current_num} of {total_num}
+        #     # </div>
+        #     # """, unsafe_allow_html=True)
+        
+        with col_nav_right:
+            if st.button("▶", key="nav_next", help="Next image", use_container_width=True):
+                navigate_carousel("next")
     else:
-        # Single image - side by side layout
-        img = images[0]
+        # Single image indicator
+        st.markdown(f"""
+        <div class="carousel-indicator">
+            🎨 Generated Interpretation
+        </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown("</div>", unsafe_allow_html=True)
+    
+    # Current Image Display with Side-by-Side Layout
+    current_index = st.session_state.current_image_index
+    current_image = images[current_index]
+    
+    # Two columns: Image on left, Controls on right
+    col_image, col_controls = st.columns([2, 1])
+    
+    with col_image:
+        st.markdown('<div class="image-container">', unsafe_allow_html=True)
+        st.image(
+            current_image, 
+            caption=f"Interpretation {current_index + 1}" if len(images) > 1 else "Generated Interpretation",
+            use_container_width=False
+        )
+        st.markdown('</div>', unsafe_allow_html=True)
         
-        # Create two columns for better layout
-        col_image, col_controls = st.columns([2, 1])  # Image takes 2/3, controls take 1/3
+        # Download button below image
+        img_bytes = get_image_download_link(
+            current_image, 
+            f"versecanvas_poem_{current_index + 1}.png"
+        )
+        st.download_button(
+            label="📥 Download Current Image",
+            data=img_bytes,
+            file_name=f"versecanvas_poem_{current_index + 1}.png",
+            mime="image/png",
+            use_container_width=True,
+            key=f"download_current_{current_index}"
+        )
         
-        with col_image:
-            st.image(img, caption="Generated Interpretation", use_container_width=True)
-            
-            # Download button below image
-            img_bytes = get_image_download_link(img, "versecanvas_poem.png")
-            st.download_button(
-                label="📥 Download Image",
-                data=img_bytes,
-                file_name="versecanvas_poem.png",
-                mime="image/png",
-                use_container_width=True
-            )
+        # Navigation hints for multiple images
+        if len(images) > 1:
+            st.markdown("""
+            <div style='text-align: center; color: #666; font-size: 0.9rem; margin-top: 1rem;'>
+                💡 Use ◀ ▶ buttons above to view other interpretations
+            </div>
+            """, unsafe_allow_html=True)
+    
+    with col_controls:
+        st.markdown('<div class="controls-container">', unsafe_allow_html=True)
+        st.markdown('<div class="controls-header"> Edit Current Image</div>', unsafe_allow_html=True)
+        add_editing_controls(current_index)
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Download All button for multiple images
+    if len(images) > 1:
+        st.markdown("---")
+        col_download_all, col_info = st.columns([1, 2])
         
-        with col_controls:
-            st.markdown("### ✏️ Edit Image")
-            add_editing_controls(0)
+        with col_download_all:
+            # Create a simple download all option
+            if st.button("📦 Download All Images", use_container_width=True):
+                st.info("💡 Use the navigation arrows above to view each image and download them individually.")
+        
+        with col_info:
+            st.markdown(f"""
+            <div style='padding: 0.5rem; background: #e8f4f8; border-radius: 5px; font-size: 0.9rem;'>
+                📊 <strong>Your Collection:</strong> {len(images)} interpretations generated<br>
+                🎯 <strong>Currently Viewing:</strong> Interpretation {current_index + 1}
+            </div>
+            """, unsafe_allow_html=True)
+    
+    st.markdown('</div>', unsafe_allow_html=True)
 
 def add_editing_controls(image_index):
     """Add editing controls for an image with apply button"""
@@ -493,6 +657,7 @@ def show_info():
             st.session_state.current_poem = ""
             st.session_state.generation_complete = False
             st.session_state.text_overlay_enabled = {}
+            reset_carousel()
             # Note: Keep text_overlay_default to remember user preference
             st.rerun()
 
