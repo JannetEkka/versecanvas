@@ -1,4 +1,14 @@
 import streamlit as st
+
+# Page configuration MUST be the very first Streamlit command
+st.set_page_config(
+    page_title="VerseCanvas - Poetry to Visual Art",
+    page_icon="🎨",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# Now import everything else
 import os
 from pathlib import Path
 import tempfile
@@ -6,6 +16,8 @@ from dotenv import load_dotenv
 from PIL import Image
 import io
 import base64
+import json
+from google.oauth2 import service_account
 
 # Import our custom modules
 from poem_analyzer import analyze_poem
@@ -13,28 +25,8 @@ from image_generator import generate_poem_image
 from image_editor import basic_edit_image
 from text_overlay import add_poem_to_image
 
-"""
-Debug script to test credentials loading in Streamlit Cloud
-Add this temporarily to your app.py to debug the credentials issue
-"""
-
-import streamlit as st
-import json
-import base64
-import re
-from google.oauth2 import service_account
-
-
 # Load environment variables
 load_dotenv()
-
-# Page configuration
-st.set_page_config(
-    page_title="VerseCanvas - Poetry to Visual Art",
-    page_icon="🎨",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
 
 # Initialize session state
 if 'images' not in st.session_state:
@@ -101,14 +93,6 @@ st.markdown("""
         align-items: center;
         gap: 1rem;
     }
-    # .carousel-indicator {
-    #     background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-    #     color: white;
-    #     padding: 0.5rem 1rem;
-    #     border-radius: 20px;
-    #     font-weight: bold;
-    #     font-size: 0.9rem;
-    # }
     .nav-button {
         background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
         color: white;
@@ -149,7 +133,7 @@ st.markdown("""
         padding-bottom: 0.5rem;
         border-bottom: 2px solid #f0f0f0;
     }
-            .stMainBlockContainer {
+    .stMainBlockContainer {
         padding-top: 1rem !important;
         padding-bottom: 1rem !important;
     }
@@ -181,113 +165,99 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 def debug_credentials():
-    """Debug function to test credentials loading"""
-    st.write("🔍 **Debug: Credentials Loading**")
-    
+    """Debug function to test credentials loading - only show in debug mode"""
+    # Only show debug info if explicitly requested via URL parameter
     try:
-        # Check if secrets are available
-        if hasattr(st, 'secrets'):
-            st.write("✅ Streamlit secrets available")
+        if st.experimental_get_query_params().get('debug', [False])[0]:
+            st.write("🔍 **Debug: Credentials Loading**")
             
-            # Check PROJECT_ID
-            if 'PROJECT_ID' in st.secrets:
-                st.write(f"✅ PROJECT_ID: {st.secrets['PROJECT_ID']}")
-            else:
-                st.error("❌ PROJECT_ID not found in secrets")
-                return
-            
-            # Check GOOGLE_CREDENTIALS
-            if 'GOOGLE_CREDENTIALS' in st.secrets:
-                st.write("✅ GOOGLE_CREDENTIALS found in secrets")
-                
-                # Try to parse JSON
-                try:
-                    credentials_json = st.secrets['GOOGLE_CREDENTIALS']
-                    st.write(f"📏 Credentials string length: {len(credentials_json)}")
+            try:
+                # Check if secrets are available
+                if hasattr(st, 'secrets'):
+                    st.write("✅ Streamlit secrets available")
                     
-                    # Parse JSON
-                    credentials_info = json.loads(credentials_json)
-                    st.write("✅ JSON parsing successful")
+                    # Check PROJECT_ID
+                    if 'PROJECT_ID' in st.secrets:
+                        st.write(f"✅ PROJECT_ID: {st.secrets['PROJECT_ID']}")
+                    else:
+                        st.error("❌ PROJECT_ID not found in secrets")
+                        return
                     
-                    # Check required fields
-                    required_fields = ['type', 'project_id', 'private_key_id', 'private_key', 'client_email']
-                    for field in required_fields:
-                        if field in credentials_info:
-                            if field == 'private_key':
-                                st.write(f"✅ {field}: {len(credentials_info[field])} characters")
-                                # Check private key format
-                                pk = credentials_info[field]
-                                if pk.startswith('-----BEGIN PRIVATE KEY-----'):
-                                    st.write("✅ Private key has correct header")
-                                else:
-                                    st.error("❌ Private key missing header")
-                                
-                                if pk.endswith('-----END PRIVATE KEY-----'):
-                                    st.write("✅ Private key has correct footer")
-                                else:
-                                    st.error("❌ Private key missing footer")
-                                
-                                # Check for proper newlines
-                                if '\\n' in pk:
-                                    st.write("✅ Private key contains newline escapes")
-                                else:
-                                    st.error("❌ Private key missing newline escapes")
-                                    
-                            else:
-                                st.write(f"✅ {field}: {credentials_info[field][:50]}...")
-                        else:
-                            st.error(f"❌ Missing field: {field}")
-                    
-                    # Try to create credentials object
-                    try:
-                        credentials = service_account.Credentials.from_service_account_info(credentials_info)
-                        st.write("✅ Service account credentials created successfully")
+                    # Check GOOGLE_CREDENTIALS
+                    if 'GOOGLE_CREDENTIALS' in st.secrets:
+                        st.write("✅ GOOGLE_CREDENTIALS found in secrets")
                         
-                        # Test if credentials are valid
+                        # Try to parse JSON
                         try:
-                            # Try to refresh (this will validate the credentials)
-                            import google.auth.transport.requests
-                            request = google.auth.transport.requests.Request()
-                            credentials.refresh(request)
-                            st.write("✅ Credentials are valid and refreshed successfully")
-                        except Exception as e:
-                            st.error(f"❌ Credentials validation failed: {str(e)}")
-                        
-                    except Exception as e:
-                        st.error(f"❌ Failed to create credentials: {str(e)}")
-                        
-                        # Additional debugging for private key issues
-                        if "Incorrect padding" in str(e) or "Invalid" in str(e):
-                            st.write("🔧 **Private Key Debugging:**")
-                            pk = credentials_info.get('private_key', '')
+                            credentials_json = st.secrets['GOOGLE_CREDENTIALS']
+                            st.write(f"📏 Credentials string length: {len(credentials_json)}")
                             
-                            # Extract just the base64 part
-                            pk_clean = pk.replace('-----BEGIN PRIVATE KEY-----', '')
-                            pk_clean = pk_clean.replace('-----END PRIVATE KEY-----', '')
-                            pk_clean = pk_clean.replace('\\n', '').replace('\n', '').strip()
+                            # Parse JSON
+                            credentials_info = json.loads(credentials_json)
+                            st.write("✅ JSON parsing successful")
                             
-                            st.write(f"Base64 content length: {len(pk_clean)}")
+                            # Check required fields
+                            required_fields = ['type', 'project_id', 'private_key_id', 'private_key', 'client_email']
+                            for field in required_fields:
+                                if field in credentials_info:
+                                    if field == 'private_key':
+                                        st.write(f"✅ {field}: {len(credentials_info[field])} characters")
+                                        # Check private key format
+                                        pk = credentials_info[field]
+                                        if pk.startswith('-----BEGIN PRIVATE KEY-----'):
+                                            st.write("✅ Private key has correct header")
+                                        else:
+                                            st.error("❌ Private key missing header")
+                                        
+                                        if pk.endswith('-----END PRIVATE KEY-----'):
+                                            st.write("✅ Private key has correct footer")
+                                        else:
+                                            st.error("❌ Private key missing footer")
+                                        
+                                        # Check for proper newlines
+                                        if '\\n' in pk:
+                                            st.write("✅ Private key contains newline escapes")
+                                        else:
+                                            st.error("❌ Private key missing newline escapes")
+                                            
+                                    else:
+                                        st.write(f"✅ {field}: {credentials_info[field][:50]}...")
+                                else:
+                                    st.error(f"❌ Missing field: {field}")
                             
-                            # Test base64 decoding
+                            # Try to create credentials object
                             try:
-                                import base64
-                                decoded = base64.b64decode(pk_clean)
-                                st.write(f"✅ Base64 decoding successful, {len(decoded)} bytes")
-                            except Exception as decode_error:
-                                st.error(f"❌ Base64 decoding failed: {decode_error}")
-                        
-                except json.JSONDecodeError as e:
-                    st.error(f"❌ JSON parsing failed: {str(e)}")
-                    st.write("Raw credentials preview:")
-                    st.code(credentials_json[:500] + "..." if len(credentials_json) > 500 else credentials_json)
+                                credentials = service_account.Credentials.from_service_account_info(credentials_info)
+                                st.write("✅ Service account credentials created successfully")
+                                
+                                # Test if credentials are valid
+                                try:
+                                    # Try to refresh (this will validate the credentials)
+                                    import google.auth.transport.requests
+                                    request = google.auth.transport.requests.Request()
+                                    credentials.refresh(request)
+                                    st.write("✅ Credentials are valid and refreshed successfully")
+                                except Exception as e:
+                                    st.error(f"❌ Credentials validation failed: {str(e)}")
+                                
+                            except Exception as e:
+                                st.error(f"❌ Failed to create credentials: {str(e)}")
+                                
+                        except json.JSONDecodeError as e:
+                            st.error(f"❌ JSON parsing failed: {str(e)}")
+                            st.write("Raw credentials preview:")
+                            st.code(credentials_json[:500] + "..." if len(credentials_json) > 500 else credentials_json)
+                            
+                    else:
+                        st.error("❌ GOOGLE_CREDENTIALS not found in secrets")
+                else:
+                    st.error("❌ Streamlit secrets not available")
                     
-            else:
-                st.error("❌ GOOGLE_CREDENTIALS not found in secrets")
-        else:
-            st.error("❌ Streamlit secrets not available")
-            
-    except Exception as e:
-        st.error(f"❌ Debug failed: {str(e)}")
+            except Exception as e:
+                st.error(f"❌ Debug failed: {str(e)}")
+    except:
+        # If experimental_get_query_params is not available, skip debug
+        pass
 
 def main():
     # Header
@@ -496,15 +466,6 @@ def display_generated_artwork():
         with col_nav_left:
             if st.button("◀", key="nav_prev", help="Previous image", use_container_width=True):
                 navigate_carousel("prev")
-        
-        # with col_indicator:
-        #     current_num = st.session_state.current_image_index + 1
-        #     total_num = len(images)
-        #     # st.markdown(f"""
-        #     # <div class="carousel-indicator">
-        #     #     🎨 Interpretation {current_num} of {total_num}
-        #     # </div>
-        #     # """, unsafe_allow_html=True)
         
         with col_nav_right:
             if st.button("▶", key="nav_next", help="Next image", use_container_width=True):
@@ -783,6 +744,7 @@ def show_info():
             st.rerun()
 
 if __name__ == "__main__":
-    debug_credentials()
+    # Only show debug if explicitly requested
+    debug_credentials()  # This is now safe since it checks for debug parameter
     show_info()
     main()

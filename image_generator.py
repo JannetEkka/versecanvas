@@ -5,9 +5,14 @@ Uses Google Imagen on Vertex AI to generate images from poem analysis.
 
 import os
 import json
+import json
 import logging
 import tempfile
 from typing import List, Optional
+from PIL import Image
+import vertexai
+from vertexai.preview.vision_models import ImageGenerationModel
+from google.oauth2 import service_account
 from PIL import Image
 import vertexai
 from vertexai.preview.vision_models import ImageGenerationModel
@@ -27,7 +32,7 @@ def get_config_and_credentials():
     credentials = None
 
     try:
-        # Try Streamlit secrets first (for cloud deployment)
+        # Attempt to load from Streamlit secrets (for cloud deployment)
         import streamlit as st
         if hasattr(st, 'secrets') and 'PROJECT_ID' in st.secrets:
             project_id = st.secrets['PROJECT_ID']
@@ -149,10 +154,14 @@ class ImageGenerator:
         """Initialize the image generator with Vertex AI."""
         try:
             config = get_config_and_credentials()
+            config = get_config_and_credentials()
             self.project_id = config['project_id']
             self.location = config['location']
             credentials = config['credentials']
+            credentials = config['credentials']
             
+            # Initialize Vertex AI with explicit credentials if provided
+            vertexai.init(project=self.project_id, location=self.location, credentials=credentials)
             # Initialize Vertex AI with explicit credentials if provided
             vertexai.init(project=self.project_id, location=self.location, credentials=credentials)
             
@@ -228,6 +237,17 @@ class ImageGenerator:
                 # Convert to RGB if necessary
                 if pil_image.mode != 'RGB':
                     pil_image = pil_image.convert('RGB')
+                # Make a copy to avoid file handle issues
+                result_image = pil_image.copy()
+                pil_image.close()
+                
+                # Clean up temp file
+                try:
+                    os.unlink(temp_file.name)
+                except:
+                    pass  # Ignore cleanup errors
+                    
+                return result_image
                 # Make a copy to avoid file handle issues
                 result_image = pil_image.copy()
                 pil_image.close()
