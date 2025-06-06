@@ -207,6 +207,7 @@ __pycache__/
 
 # Streamlit
 .streamlit/
+.streamlit/secrets.toml
 
 # IDE
 .vscode/settings.json

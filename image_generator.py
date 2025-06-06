@@ -16,15 +16,56 @@ from typing import List, Optional
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+def get_config():
+    """Get configuration from either Streamlit secrets or environment variables."""
+    try:
+        # Try Streamlit secrets first (for cloud deployment)
+        import streamlit as st
+        if hasattr(st, 'secrets') and 'PROJECT_ID' in st.secrets:
+            config = {
+                'project_id': st.secrets['PROJECT_ID'],
+                'location': st.secrets.get('LOCATION', 'us-central1')
+            }
+            
+            # Handle Google Cloud authentication for Streamlit Cloud
+            if 'GOOGLE_CREDENTIALS' in st.secrets:
+                import json
+                from google.oauth2 import service_account
+                
+                # Parse the service account credentials
+                credentials_info = json.loads(st.secrets['GOOGLE_CREDENTIALS'])
+                credentials = service_account.Credentials.from_service_account_info(credentials_info)
+                
+                # Set the credentials for Google Cloud libraries
+                import os
+                # This is a bit hacky but works for most Google Cloud libraries
+                os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = 'temp_creds.json'
+                with open('temp_creds.json', 'w') as f:
+                    json.dump(credentials_info, f)
+            
+            return config
+    except (ImportError, AttributeError, KeyError):
+        pass
+    
+    # Fallback to environment variables (for local development)
+    project_id = os.getenv('PROJECT_ID')
+    location = os.getenv('LOCATION', 'us-central1')
+    
+    if not project_id:
+        raise ValueError("PROJECT_ID not found in secrets or environment variables")
+    
+    return {
+        'project_id': project_id,
+        'location': location
+    }
+
 class ImageGenerator:
     def __init__(self):
         """Initialize the image generator with Vertex AI."""
         try:
-            self.project_id = os.getenv('PROJECT_ID')
-            self.location = os.getenv('LOCATION', 'us-central1')
-            
-            if not self.project_id:
-                raise ValueError("PROJECT_ID environment variable not set")
+            config = get_config()
+            self.project_id = config['project_id']
+            self.location = config['location']
             
             # Initialize Vertex AI
             vertexai.init(project=self.project_id, location=self.location)
