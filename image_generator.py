@@ -4,71 +4,80 @@ Uses Google Imagen on Vertex AI to generate images from poem analysis.
 """
 
 import os
-import vertexai
-from vertexai.preview.vision_models import ImageGenerationModel
-from PIL import Image
-import io
+import json
 import logging
 import tempfile
 from typing import List, Optional
+from PIL import Image
+import vertexai
+from vertexai.preview.vision_models import ImageGenerationModel
+from google.oauth2 import service_account
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def get_config():
-    """Get configuration from either Streamlit secrets or environment variables."""
+def get_config_and_credentials():
+    """
+    Get configuration (project_id, location) and Google Cloud credentials
+    from Streamlit secrets (for cloud) or environment variables (for local).
+    """
+    project_id = None
+    location = None
+    credentials = None
+
     try:
-        # Try Streamlit secrets first (for cloud deployment)
+        # Attempt to load from Streamlit secrets (for cloud deployment)
         import streamlit as st
         if hasattr(st, 'secrets') and 'PROJECT_ID' in st.secrets:
-            config = {
-                'project_id': st.secrets['PROJECT_ID'],
-                'location': st.secrets.get('LOCATION', 'us-central1')
-            }
-            
-            # Handle Google Cloud authentication for Streamlit Cloud
+            project_id = st.secrets['PROJECT_ID']
+            location = st.secrets.get('LOCATION', 'us-central1')
+
             if 'GOOGLE_CREDENTIALS' in st.secrets:
-                import json
-                from google.oauth2 import service_account
-                
-                # Parse the service account credentials
                 credentials_info = json.loads(st.secrets['GOOGLE_CREDENTIALS'])
                 credentials = service_account.Credentials.from_service_account_info(credentials_info)
-                
-                # Set the credentials for Google Cloud libraries
-                import os
-                # This is a bit hacky but works for most Google Cloud libraries
-                os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = 'temp_creds.json'
-                with open('temp_creds.json', 'w') as f:
-                    json.dump(credentials_info, f)
-            
-            return config
-    except (ImportError, AttributeError, KeyError):
-        pass
-    
+                logger.info("Using credentials from Streamlit secrets")
+            else:
+                logger.warning("GOOGLE_CREDENTIALS not found in Streamlit secrets. Relying on default authentication.")
+
+            return {
+                'project_id': project_id,
+                'location': location,
+                'credentials': credentials
+            }
+    except (ImportError, AttributeError, KeyError) as e:
+        logger.info(f"Not using Streamlit secrets: {e}")
+
     # Fallback to environment variables (for local development)
     project_id = os.getenv('PROJECT_ID')
     location = os.getenv('LOCATION', 'us-central1')
     
     if not project_id:
-        raise ValueError("PROJECT_ID not found in secrets or environment variables")
+        raise ValueError(
+            "PROJECT_ID not found in Streamlit secrets or environment variables. "
+            "Please set PROJECT_ID and either:\n"
+            "1. GOOGLE_APPLICATION_CREDENTIALS environment variable (for local), or\n"
+            "2. Configure secrets.toml with GOOGLE_CREDENTIALS (for cloud deployment)"
+        )
     
+    logger.info("Using environment variables for configuration")
     return {
         'project_id': project_id,
-        'location': location
+        'location': location,
+        'credentials': None  # For local, rely on GOOGLE_APPLICATION_CREDENTIALS env var
     }
 
 class ImageGenerator:
     def __init__(self):
         """Initialize the image generator with Vertex AI."""
         try:
-            config = get_config()
+            config = get_config_and_credentials()
             self.project_id = config['project_id']
             self.location = config['location']
+            credentials = config['credentials']
             
-            # Initialize Vertex AI
-            vertexai.init(project=self.project_id, location=self.location)
+            # Initialize Vertex AI with explicit credentials if provided
+            vertexai.init(project=self.project_id, location=self.location, credentials=credentials)
             
             # Load the Imagen model
             self.model = ImageGenerationModel.from_pretrained("imagen-3.0-generate-002")
@@ -142,7 +151,17 @@ class ImageGenerator:
                 # Convert to RGB if necessary
                 if pil_image.mode != 'RGB':
                     pil_image = pil_image.convert('RGB')
-                return pil_image.copy()  # Copy to avoid file handle issues
+                # Make a copy to avoid file handle issues
+                result_image = pil_image.copy()
+                pil_image.close()
+                
+                # Clean up temp file
+                try:
+                    os.unlink(temp_file.name)
+                except:
+                    pass  # Ignore cleanup errors
+                    
+                return result_image
                 
         except Exception as e:
             logger.error(f"Error converting Vertex AI image to PIL: {str(e)}")
