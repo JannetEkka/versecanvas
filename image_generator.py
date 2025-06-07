@@ -226,18 +226,6 @@ class ImageGenerator:
                     pass  # Ignore cleanup errors
                     
                 return result_image
-                # Make a copy to avoid file handle issues
-                result_image = pil_image.copy()
-                pil_image.close()
-                
-                # Clean up temp file
-                try:
-                    os.unlink(temp_file.name)
-                except:
-                    pass  # Ignore cleanup errors
-                    
-                return result_image
-                
         except Exception as e:
             logger.error(f"Error converting Vertex AI image to PIL: {str(e)}")
             raise

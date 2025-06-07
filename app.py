@@ -42,7 +42,7 @@ if 'generation_complete' not in st.session_state:
 if 'text_overlay_enabled' not in st.session_state:
     st.session_state.text_overlay_enabled = {}
 if 'text_overlay_default' not in st.session_state:
-    st.session_state.text_overlay_default = False
+    st.session_state.text_overlay_default = True
 if 'current_image_index' not in st.session_state:
     st.session_state.current_image_index = 0
 
@@ -317,7 +317,7 @@ def main():
         )
         
         # Style preferences
-        st.subheader("🎨 Style Preferences")
+        st.subheader("Style Preferences")
         art_style = st.selectbox(
             "Art Style",
             ["Photorealistic", "Watercolor", "Oil Painting", "Digital Art", "Abstract", "Minimalist"],
@@ -330,7 +330,7 @@ def main():
         num_images = st.slider("Number of Images", 1, 3, 2)
 
     # Main content area - Vertical layout
-    st.header("📝 Enter Your Poem")
+    st.header("Enter Your Poem")
     
     # Sample poems for demo
     sample_poems = {
@@ -360,7 +360,7 @@ And ancient tides eternal sweep."""
     )
     
     # Analysis button
-    if st.button("🔍 Analyze & Generate", type="primary", use_container_width=True):
+    if st.button("Analyze & Generate", type="primary", use_container_width=True):
         if poem_text.strip():
             # Clear previous results if poem changed
             if st.session_state.current_poem != poem_text:
@@ -383,7 +383,7 @@ And ancient tides eternal sweep."""
         # Show placeholder when no poem is being processed
         st.markdown("""
         <div style='text-align: center; padding: 1rem 0; color: #6c757d;'>
-            <h3>🎨 Your Generated Artwork Will Appear Here</h3>
+            <h3>Your Generated Artwork Will Appear Here</h3>
             <p>Enter a poem above and click "Analyze & Generate" to create beautiful AI-powered visual art!</p>
         </div>
         """, unsafe_allow_html=True)
@@ -393,7 +393,7 @@ def analyze_and_generate(poem_text, language, art_style, mood_intensity, num_ima
     
     # Add visual separation
     st.markdown('<div class="artwork-section">', unsafe_allow_html=True)
-    st.header("🎨 Generated Artwork")
+    st.header("Generated Artwork")
     
     # Progress tracking
     progress_bar = st.progress(0)
@@ -411,14 +411,14 @@ def analyze_and_generate(poem_text, language, art_style, mood_intensity, num_ima
             st.success("✅ Poem analysis complete!")
             
             # Display analysis
-            with st.expander("📋 View Analysis Details"):
+            with st.expander("View Analysis Details"):
                 st.markdown("**Themes:** " + analysis_result.get('themes', 'N/A'))
                 st.markdown("**Mood:** " + analysis_result.get('mood', 'N/A'))
                 st.markdown("**Visual Elements:** " + analysis_result.get('visual_elements', 'N/A'))
                 st.markdown("**Generated Prompt:** " + analysis_result.get('image_prompt', 'N/A'))
             
             # Step 2: Generate images
-            status_text.text("🎨 Generating images...")
+            status_text.text("Generating images...")
             progress_bar.progress(60)
             
             images = generate_poem_image(analysis_result['image_prompt'], num_images)
@@ -473,7 +473,7 @@ def display_generated_artwork():
     
     # Add visual separation
     st.markdown('<div class="artwork-section">', unsafe_allow_html=True)
-    st.header("🎨 Generated Artwork")
+    st.header("Generated Artwork")
     
     images = st.session_state.edited_images  # Use edited versions
     
@@ -486,7 +486,7 @@ def display_generated_artwork():
     
     # Display analysis if available
     if st.session_state.analysis_result:
-        with st.expander("📋 View Analysis Details"):
+        with st.expander("View Analysis Details"):
             analysis = st.session_state.analysis_result
             st.markdown("**Themes:** " + analysis.get('themes', 'N/A'))
             st.markdown("**Mood:** " + analysis.get('mood', 'N/A'))
@@ -511,7 +511,7 @@ def display_generated_artwork():
         # Single image indicator
         st.markdown(f"""
         <div class="carousel-indicator">
-            🎨 Generated Interpretation
+            Generated Interpretation
         </div>
         """, unsafe_allow_html=True)
     
@@ -539,7 +539,7 @@ def display_generated_artwork():
             f"versecanvas_poem_{current_index + 1}.png"
         )
         st.download_button(
-            label="📥 Download Current Image",
+            label="Download Current Image",
             data=img_bytes,
             file_name=f"versecanvas_poem_{current_index + 1}.png",
             mime="image/png",
@@ -568,14 +568,14 @@ def display_generated_artwork():
         
         with col_download_all:
             # Create a simple download all option
-            if st.button("📦 Download All Images", use_container_width=True):
+            if st.button("Download All Images", use_container_width=True):
                 st.info("💡 Use the navigation arrows above to view each image and download them individually.")
         
         with col_info:
             st.markdown(f"""
             <div style='padding: 0.5rem; background: #e8f4f8; border-radius: 5px; font-size: 0.9rem;'>
-                📊 <strong>Your Collection:</strong> {len(images)} interpretations generated<br>
-                🎯 <strong>Currently Viewing:</strong> Interpretation {current_index + 1}
+                <strong>Your Collection:</strong> {len(images)} interpretations generated<br>
+                <strong>Currently Viewing:</strong> Interpretation {current_index + 1}
             </div>
             """, unsafe_allow_html=True)
     
@@ -596,7 +596,7 @@ def add_editing_controls(image_index):
     reset_suffix = st.session_state[reset_key]
     
     # Create tabs for different editing options
-    tab1, tab2 = st.tabs(["🎨 Image Adjustments", "📝 Add Poem Text"])
+    tab1, tab2 = st.tabs(["Image Adjustments", "Add Poem Text"])
     
     with tab1:
         st.markdown("**Adjust Image Properties:**")
@@ -629,7 +629,7 @@ def add_editing_controls(image_index):
         
         # Show current settings
         if brightness != 1.0 or contrast != 1.0 or blur != 0:
-            st.info(f"🎨 Preview: Brightness {brightness:.1f}, Contrast {contrast:.1f}, Blur {blur}")
+            st.info(f"Preview: Brightness {brightness:.1f}, Contrast {contrast:.1f}, Blur {blur}")
     
     with tab2:
         st.markdown("**Add Poem Text to Image:**")
@@ -699,7 +699,7 @@ def add_editing_controls(image_index):
     col_apply, col_reset = st.columns(2)
     
     with col_apply:
-        if st.button(f"✨ Apply Changes", key=f"apply_{image_index}_{reset_suffix}", use_container_width=True):
+        if st.button(f"Apply Changes", key=f"apply_{image_index}_{reset_suffix}", use_container_width=True):
             try:
                 # Start with original image
                 edited_image = original_image.copy()
@@ -729,7 +729,7 @@ def add_editing_controls(image_index):
                 st.error(f"Error applying changes: {str(e)}")
     
     with col_reset:
-        if st.button(f"🔄 Reset to Original", key=f"reset_{image_index}_{reset_suffix}", use_container_width=True):
+        if st.button(f"Reset to Original", key=f"reset_{image_index}_{reset_suffix}", use_container_width=True):
             try:
                 # Reset to original image
                 st.session_state.edited_images[image_index] = original_image.copy()
@@ -749,36 +749,35 @@ def get_image_download_link(image, filename):
 
 # Information sidebar
 def show_info():
-    with st.sidebar:
-        st.markdown("---")
-        st.subheader("ℹ️ How it works")
-        st.markdown("""
-        1. **Enter your poem** in any supported language
-        2. **AI analyzes** themes, emotions, and visual elements
-        3. **Images are generated** based on the analysis
-        4. **Edit and customize** your artwork
-        5. **Download** your creation
-        """)
-        
-        st.subheader("🔧 Technical Details")
-        st.markdown("""
-        - **AI Models**: Google Gemini, Imagen
-        - **Platform**: Vertex AI
-        - **Languages**: Multi-language support
-        - **Editing**: Real-time image processing
-        """)
-        
-        # Add a button to clear the session
-        if st.button("🗑️ Clear All"):
-            st.session_state.images = []
-            st.session_state.edited_images = []
-            st.session_state.analysis_result = None
-            st.session_state.current_poem = ""
-            st.session_state.generation_complete = False
-            st.session_state.text_overlay_enabled = {}
-            reset_carousel()
-            # Note: Keep text_overlay_default to remember user preference
-            st.rerun()
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("ℹ️ How it works")
+    st.sidebar.markdown("""
+    1. **Enter your poem** in any supported language
+    2. **AI analyzes** themes, emotions, and visual elements
+    3. **Images are generated** based on the analysis
+    4. **Edit and customize** your artwork
+    5. **Download** your creation
+    """)
+    
+    st.sidebar.subheader("🔧 Technical Details")
+    st.sidebar.markdown("""
+    - **AI Models**: Google Gemini, Imagen
+    - **Platform**: Vertex AI
+    - **Languages**: Multi-language support
+    - **Editing**: Real-time image processing
+    """)
+    
+    # Add a button to clear the session
+    if st.sidebar.button("🗑️ Clear All"):
+        st.session_state.images = []
+        st.session_state.edited_images = []
+        st.session_state.analysis_result = None
+        st.session_state.current_poem = ""
+        st.session_state.generation_complete = False
+        st.session_state.text_overlay_enabled = {}
+        reset_carousel()
+        # Note: Keep text_overlay_default to remember user preference
+        st.rerun()
 
 if __name__ == "__main__":
     # Only show debug if explicitly requested
