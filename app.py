@@ -418,19 +418,48 @@ def analyze_and_generate(poem_text, language, art_style, mood_intensity, num_ima
                 st.markdown("**Generated Prompt:** " + analysis_result.get('image_prompt', 'N/A'))
             
             # Step 2: Generate images
-            status_text.text("Generating images...")
+            status_text.text("🎨 Generating images...")
             progress_bar.progress(60)
             
             images = generate_poem_image(analysis_result['image_prompt'], num_images)
             
             if images:
-                st.session_state.images = images
-                st.session_state.edited_images = images.copy()  # Initialize edited images as copies
+                st.session_state.images = images.copy()
+                
+                # Step 3: Apply default text overlay to all images
+                status_text.text("✨ Adding poem text overlay...")
+                progress_bar.progress(80)
+                
+                edited_images = []
+                for image in images:
+                    try:
+                        # Apply text overlay with default settings if enabled by default
+                        if st.session_state.text_overlay_default and poem_text:
+                            from text_overlay import add_poem_to_image
+                            image_with_text = add_poem_to_image(
+                                image=image,
+                                poem_text=poem_text,
+                                font_size=24,
+                                font_color=(255, 255, 255),  # White
+                                position="center",
+                                background_opacity=0.7,
+                                background_color=(0, 0, 0),  # Black
+                                font_style="serif",
+                                text_alignment="center"
+                            )
+                            edited_images.append(image_with_text)
+                        else:
+                            edited_images.append(image.copy())
+                    except Exception as e:
+                        st.warning(f"Text overlay failed for one image: {str(e)}")
+                        edited_images.append(image.copy())
+                
+                st.session_state.edited_images = edited_images
                 st.session_state.generation_complete = True
                 reset_carousel()  # Reset to first image
                 
                 progress_bar.progress(100)
-                status_text.text("✨ Complete! Your artwork is ready.")
+                status_text.text("✨ Complete! Your artwork is ready with text overlay.")
                 
                 # Display will be handled by display_generated_artwork()
                 st.rerun()  # Refresh to show the artwork section
